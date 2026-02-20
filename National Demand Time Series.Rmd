@@ -1,0 +1,979 @@
+---
+title: "Assessment 2: Exploratory Data Analysis and Visualisation"
+CID: '06000562, 06035448, 06013608'
+output: pdf_document
+date: "2025-02-27"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("ggplot2")
+library("tseries")
+library("gridExtra")
+library("dplyr")
+library("corrplot")
+library("ggpubr")
+library("GGally")
+library("lubridate")
+```
+
+## Initial Investigation of Dataset
+
+First we will import the data for energy demand in the UK.
+
+```{r}
+data <- read.csv("energy_demand_uk.csv", stringsAsFactors = FALSE)
+```
+
+Now we will check the dimensions of the dataset (number of rows and columns) and the data types of each variable.
+
+```{r}
+dim(data)
+str(data)
+```
+
+We can see that there are 10 variables in the dataset and 1,461 rows of information. The first field "X" can be dropped. We can also see that the date variable is imported as a character type and needs to be converted to a date type. All other variables are correctly set to their default data types of integer or numeric.
+
+```{r}
+data$date <- as.Date(data$date, format = "%Y-%m-%d")
+data <- data[, -1] 
+```
+
+Now we will check for any records that having missing information in the dataset.
+
+```{r}
+data[!complete.cases(data), ]
+```
+
+We have found only one records with missing information out of all 1,461 records, and will therefore omit this record from the full dataset prior to further analysis. We will also observe the initial few rows to check how the variables are formatted before proceeding further.
+
+```{r}
+clean_data <- na.omit(data)
+head(clean_data)
+```
+\newpage
+## Time Series plots of each variable
+
+In our initial analysis we will plot the time series graphs for each of the variables within the four year period.
+
+```{r fig.width=12, fig.height=3}
+# Plot time series
+for (col_name in names(clean_data[2:length(clean_data)])){
+  p <- ggplot(clean_data, aes(x = date, y = clean_data[[col_name]])) +
+  geom_line() + geom_smooth(method = "lm", color = "red", formula = y ~ x) + 
+  labs(title = paste("Time Series - " , col_name), x = "Date", y = col_name) +
+  theme_minimal()
+  print(p);
+}
+```
+
+\newpage
+## Autocorrelation function graphs
+
+
+Now we will plot the autocorrelation function graphs for each variable using the acf() function.
+
+
+\newpage
+## Autocorrelation function graphs
+
+Now we will plot the autocorrelation function graphs for each variable using the acf() function.
+
+```{r}
+MAX_LAG <- 40
+for (col_name in setdiff(names(clean_data)[2:length(clean_data)], "day_of_week")) {
+  
+    # Fit a linear model to the data 
+    trend_model <- lm(clean_data[[col_name]] ~ clean_data$date)
+    
+    
+    detrended_data <- residuals(trend_model)
+    
+    
+    time_series <- clean_data$date
+    
+    # plot data frame
+    plot_data <- data.frame(time_series = time_series, 
+                            original = clean_data[[col_name]], 
+                            detrended = detrended_data)
+    
+    # Plot original and detrended data on the same plot for comparison
+    p<- ggplot(plot_data, aes(x = time_series)) +
+      geom_line(aes(y = original), color = "blue", alpha = 0.5) +  
+      geom_line(aes(y = detrended), color = "red") + 
+      labs(title = paste("Detrended Data (Linear Fit) -", col_name), 
+           x = "Date", y = "Value") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+      scale_color_manual(values = c("blue", "red"))
+    
+    print(p)
+    # Plot the ACF of the detrended data
+    
+      acf_result <- acf(detrended_data, 
+          main = paste("Autocorrelation of Detrended", col_name), 
+          lag.max = MAX_LAG, na.action = na.omit, plot = FALSE)
+      
+      if (MAX_LAG > 365){
+        line_1 <- 365;
+        line_2 <- 375;
+      }
+      else{
+        line_1 <- 7;
+        line_2 <- 14;
+      }
+      
+      acf_df <- data.frame(Lag = acf_result$lag, ACF = acf_result$acf)
+        p <- ggplot(acf_df, aes(x = Lag, y = ACF)) +
+        geom_line(color = "blue") +  # Line for ACF
+        geom_point(color = "blue", size = 1.5) +  # Points for ACF values
+        geom_vline(xintercept = line_1, color = "red", linetype = "dashed", linewidth = 1) +
+        geom_vline(xintercept = line_2, color = "green", linetype = "dashed", linewidth = 1) +
+        scale_x_continuous(breaks = c(seq(0, MAX_LAG, by = MAX_LAG / 8), line_1, line_2)) + 
+        
+        labs(title = paste("Autocorrelation Function (ACF) - ", col_name),
+             x = "Lag (days)",
+             y = "Autocorrelation") +
+        theme_minimal()+
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+        print(p)
+    
+    }
+
+
+ 
+```
+
+The following plots are with Lag from 0 to 800
+
+```{r fig.width=6, fig.height=4}
+for (col_name in names(clean_data[2:length(clean_data)])) {
+  # Plot the ACF for the current column
+  acf(clean_data[[col_name]], lag.max = 750, 
+      main = paste("Autocorrelation Function (ACF) of", col_name),
+      xlab = "lag (days)")
+  
+  usr <- par("usr")
+  # Set the y-position near the top of the plot; adjust multiplier if needed
+  y_pos <- usr[4] * 0.95
+  
+  # Add vertical dashed red line at lag 365 and annotate it
+  abline(v = 365, col = "red", lty = 2)
+  text(x = 365, y = y_pos, labels = "365", col = "red", pos = 3, cex = 0.8, xpd = TRUE)
+  
+  # Add vertical dashed red line at lag 730 and annotate it
+  abline(v = 730, col = "red", lty = 2)
+  text(x = 730, y = y_pos, labels = "730", col = "red", pos = 3, cex = 0.8, xpd = TRUE)
+}
+
+
+```
+
+The following plots are with Lag from 0 to 60
+
+```{r fig.width=6, fig.height=4}
+for (col_name in names(clean_data[2:length(clean_data)])){
+    acf(clean_data[[col_name]], lag.max = 45, 
+    main = paste("Autocorrelation Function (ACF) of", col_name),
+      xlab = "lag (days)")
+  usr <- par("usr")
+  # Set the y-position near the top of the plot; adjust multiplier if needed
+  y_pos <- usr[4] 
+  
+  # Add vertical dashed red line at lag 7 and annotate it
+  abline(v = 7, col = "red", lty = 2)
+  text(x = 7, y = y_pos, labels = "7", col = "red", pos = 3, cex = 0.8, xpd = TRUE)
+  
+  # Add vertical dashed red line at lag 14 and annotate it
+  abline(v = 14, col = "red", lty = 2)
+  text(x = 14, y = y_pos, labels = "14", col = "red", pos = 3, cex = 0.8, xpd = TRUE)
+  
+    # Add vertical dashed red line at lag 21 and annotate it
+  abline(v = 21, col = "red", lty = 2)
+  text(x = 21, y = y_pos, labels = "21", col = "red", pos = 3, cex = 0.8, xpd = TRUE)
+  
+  # Add vertical dashed red line at lag 28 and annotate it
+  abline(v = 28, col = "red", lty = 2)
+  text(x = 28, y = y_pos, labels = "28", col = "red", pos = 3, cex = 0.8, xpd = TRUE)
+  
+    # Add vertical dashed red line at lag 35 and annotate it
+  abline(v = 35, col = "red", lty = 2)
+  text(x = 35, y = y_pos, labels = "35", col = "red", pos = 3, cex = 0.8, xpd = TRUE)
+  
+  # Add vertical dashed red line at lag 42 and annotate it
+  abline(v = 42, col = "red", lty = 2)
+  text(x = 42, y = y_pos, labels = "42", col = "red", pos = 3, cex = 0.8, xpd = TRUE)
+}  
+```
+
+\newpage
+# Augmented Dickey_Fuller Tests
+
+One method we can use to test a variable for stationarity is called the augmented Dickey_Fuller test, which we can implement using the adf.test() function. Any variables that have a significant P-value we will assume are stationary, while all other variables will be assumed as non-stationary. 
+
+We can see below that at a significance level of 2%, the variables wind_generation, rain_mm, wind_speed and average_price_daily are all stationary. The non-stationary variables are national demand, solar generation, min temp and max_temp.
+
+```{r}
+adf_results <- list()
+
+for (col_name in names(clean_data)[2:length(clean_data)]) {  
+  column_data <- clean_data[[col_name]]  
+  if (length(column_data) > 1) {  
+    test_result <- adf.test(column_data)
+    adf_results[[col_name]] <- test_result$p.value 
+  } else {
+    adf_results[[col_name]] <- NA  
+  }
+}
+
+# Print the results
+for (col_name in names(adf_results)) {
+  cat("\nADF Test for:", col_name, "- P-Value:", adf_results[[col_name]], "\n")
+}
+
+```
+
+\newpage
+# Augmented Dickey_Fuller Tests
+
+One method we can use to test a variable for stationarity is called the augmented Dickey_Fuller test, which we can implement using the adf.test() function. Any variables that have a significant P-value we will assume are stationary, while all other variables will be assumed as non-stationary. 
+
+We can see below that at a significance level of 2%, the variables wind_generation, rain_mm, wind_speed and average_price_daily are all stationary. The non-stationary variables are national demand, solar generation, min temp and max_temp.
+
+```{r}
+adf_results <- list()
+
+for (col_name in setdiff(names(clean_data)[2:length(clean_data)], "day_of_week")) { 
+  column_data <- clean_data[[col_name]]  
+  if (length(column_data) > 1) {  
+    test_result <- adf.test(column_data)
+    adf_results[[col_name]] <- test_result$p.value  
+  } else {
+    adf_results[[col_name]] <- NA  
+  }
+}
+
+adf_results_df <- data.frame(Column = names(adf_results), P_Value = unlist(adf_results))
+
+adf_results_df$P_Value <- round(adf_results_df$P_Value, 4)
+print(adf_results_df)
+
+adf_results_df_transposed <- t(adf_results_df)
+
+adf_results_df_transposed <- as.data.frame(adf_results_df_transposed)
+
+print(adf_results_df_transposed)
+
+```
+
+\newpage
+# Seasonality Analysis
+
+Additionally, in our univariate analysis, we can test for seasonality properties in our variables by using the spectrum() function. In order to identify patterns of seasonality, we must find peaks in our periodograms of each variable. We have decided to use a metric called "Local SNR" to determine the strength of each peak found among our variables.
+
+SNR (Signal-Noise Ratio) = Compares the power of a given peak compared to the median of all other powers
+Local SNR = Compares the power of a given peak compared to the median of all other neighbouring powers
+
+```{r}
+
+# Create function which we will use on each variable in a for loop
+get_spectral_info <- function(ts_data, window_size = 5) {
+  
+  # Compute the periodogram
+  spec_result <- spectrum(ts_data, plot = FALSE, detrend = TRUE)
+  
+  # Extract frequency and power
+  freq  <- spec_result$freq
+  power <- spec_result$spec
+  n     <- length(power)
+  noise_floor <- median(power)
+  snr <- power / noise_floor
+
+  # Compute a LOCAL median power SNR = power[i] / (median in neighborhood around i)
+  local_snr <- numeric(n)
+  for (i in seq_len(n)) {
+    # Neighborhood indices from i-window_size to i+window_size, We calculate the
+    # median of the powers in this range of indices (Excluding the bin i itself),
+    # and then use this in our ratio calculation
+    left_idx  <- max(1, i - window_size)
+    right_idx <- min(n, i + window_size)
+    idx_range <- left_idx:right_idx
+    idx_range <- setdiff(idx_range, i)
+    local_med <- mean(power[idx_range])
+    local_snr[i] <- power[i] / local_med
+  }
+  
+  # Find the top 2 bins by local SNR, and their associated frequencies, period and SNR
+  top_indices <- order(local_snr, decreasing = TRUE)[1:2]
+  top_local_snr <- local_snr[top_indices]
+  top_freq   <- freq[top_indices]
+  top_power <- power[top_indices]
+  top_period <- 1 / top_freq
+  top_snr <- snr[top_indices]
+
+  # Gather results in a data frame
+  df_out <- data.frame(
+    Frequency = top_freq,
+    Period    = top_period,
+    Power     = top_power,
+    SNR       = top_snr,
+    LocalSNR  = top_local_snr
+  )
+  return(df_out)
+}
+
+results_list <- list()
+
+# Loop over each column in the data frame and perform spectral analysis
+for (col_name in names(clean_data)[2:length(clean_data)]) {
+  ts_data <- clean_data[[col_name]] 
+  spectral_info <- get_spectral_info(ts_data, window_size = 25)
+  spectral_info$Column <- col_name  
+  results_list[[col_name]] <- spectral_info
+}
+
+# Combine results into one data frame
+results_df <- do.call(rbind, results_list)
+results_df<- results_df[order(-results_df$LocalSNR), ]
+#results_df <- results_df[results_df$LocalSNR > 50, ]
+results_df
+
+
+```
+
+\newpage
+# Raw Periodograms
+
+In the above analysis, we have identified 4 variables (National Demand, Max Temp, Min Temp and Solar Generation) with periodicity patterns with a Local SNR strength greater than 50, which are also the same four variables we have found to be non-stationary!
+
+All four variables have a periodicity of 375 days (approximately 1 year), and additionally a second periodicity was found in National Demand of 7 days (equivalent to 1 week). Below we will plot the periodograms for these 4 variables and indicate the 5 peaks associated to the periodicities identified above.
+
+```{r fig.width=12, fig.height=4}
+non_stationary_columns <- c("national_demand", "solar_generation", "min_temp", "max_temp","wind_generation")
+
+for (col_name in non_stationary_columns) {
+
+series <- clean_data[[col_name]]
+
+spec_out <- spectrum(series, main = paste("Raw Periodogram of ", col_name))
+
+subset_df <- results_df[results_df$Column == col_name, ]
+
+y_min <- min(spec_out$spec)
+y_max <- max(spec_out$spec)
+  if (nrow(subset_df) > 0) {
+    for (i in 1:nrow(subset_df)) {
+      period_val <- subset_df$Period[i]
+      freq_val <- 1 / period_val
+      abline(v = freq_val, col = "red", lty = 2, lwd = 2)
+      text(
+        x     = freq_val, 
+        y     = y_max * 0.9,  
+        labels= paste0("Periodicity=", round(period_val)), 
+        col   = "red",
+        pos   = 4,       # position text to the right of the specified (x,y)
+        offset= 0.5      # small offset from the plotted point
+      )
+    }
+  }
+}
+```
+\newpage
+# Season Adjusted Variables
+
+Now that we have identified these four variables, we will take out their periodicities, and then test their stationary again using the augmented dickey-fuller test. The plots generated below are the residuals in each variable after this transformation has been performed.
+
+
+# Second Augmented Dickey_Fuller Tests
+
+As we carry out the Augmented Dickey-Fuller tests again, we can now see that all four variables are now stationary as all p-values are significant at a 1% level.
+
+
+```{r}
+
+# Define a mapping for each column with its specific seasonal periods
+seasonal_mapping <- list(
+  national_demand = 7,   
+  solar_generation = 365,     
+  min_temp = 365,
+  max_temp= 365
+)
+seasonal_periods <- seasonal_mapping[[col_name]]
+residuals_list <- list()
+
+
+deseason_and_plot <- function(col_name, arima_p, arima_d, arima_q, season_arima_p, season_arima_d, season_arima_q){
+  
+    fit_arima <- arima( clean_data[[col_name]], 
+                     order = c(arima_p, arima_d, arima_q), seasonal =list(order = c(season_arima_p, season_arima_d, season_arima_q), period = seasonal_periods))
+    
+    
+    fitted_values <- fit_arima$residuals
+  
+  
+  
+    # Store the residuals in the list, using the column name as the key
+  residuals_list[[col_name]] <<- fit_arima$residuals
+  
+  timeseries_plot <- data.frame(value = residuals_list[[col_name]] , date = clean_data$date)
+  p <- ggplot(timeseries_plot, aes(x = date, y = value)) +
+        
+        geom_line(color = "red") +  
+        labs(title = paste("season & trend adjusted ", col_name),
+             x = "date",
+             y = col_name) +
+        theme_minimal()+
+        theme(axis.text.x = element_text(angle = 45, hjust = 1))
+        print(p)
+  
+  acf(residuals_list[[col_name]], 
+          main = paste("Autocorrelation of adjusted ", col_name), 
+          lag.max = 40, na.action = na.omit, plot = TRUE)
+  
+  #adf.test(residuals_list[[col_name]])
+  test_result <- adf.test(residuals_list[[col_name]])
+  cat("adf test for ", col_name, " \n:")
+  print(test_result)
+  
+}
+
+selected_columns <- c("national_demand", "solar_generation", "min_temp", "max_temp")
+
+arima_p <- 0
+arima_d <- 1
+arima_q <- 0
+
+season_arima_p = 0
+season_arima_d = 1
+season_arima_q = 1
+
+for (col_name in selected_columns){
+  deseason_and_plot(col_name, arima_p, arima_d, arima_q, season_arima_p, season_arima_d, season_arima_q)
+}
+
+```
+
+We will now incorporate these four transformed variables into our dataset
+
+```{r}
+
+
+clean_data_2 <- clean_data
+
+clean_data[['national_demand_stationary']]  <- residuals_list$national_demand
+clean_data[['solar_generation_stationary']]  <- residuals_list$solar_generation
+clean_data[['min_temp_stationary']]  <- residuals_list$min_temp
+clean_data[['max_temp_stationary']]  <- residuals_list$max_temp
+clean_data[['wind_generation_stationary']]  <- residuals_list$wind_generation
+
+
+clean_data_2[['national_demand*']]  <- residuals_list$national_demand
+clean_data_2[['solar_generation*']]  <- residuals_list$solar_generation
+clean_data_2[['min_temp*']]  <- residuals_list$min_temp
+clean_data_2[['max_temp*']]  <- residuals_list$max_temp
+clean_data_2[['wind_generation_stationary*']]  <- residuals_list$wind_generation
+
+
+
+```
+
+\newpage
+# CCF Plots
+
+```{r}
+
+col_names <- names(residuals_list)
+
+# Create an empty list to store CCF data
+ccf_data_list <- list()
+
+# Loop through each pair of columns and calculate CCF
+for (i in 1:(length(col_names) - 1)) {
+  for (j in (i + 1):length(col_names)) {
+    # Get the columns from the list
+    col1 <- residuals_list[[col_names[i]]]
+    col2 <- residuals_list[[col_names[j]]]
+    
+    # Compute the CCF without plotting it (plot = FALSE)
+    ccf_result <- ccf(col1, col2, lag.max = 150, plot = FALSE)
+    
+    # Convert the CCF result into a data frame
+    ccf_df <- data.frame(
+      lag = ccf_result$lag,
+      ccf = ccf_result$acf,
+      col1 = col_names[i],
+      col2 = col_names[j]
+    )
+    
+    # Append the CCF data to the list
+    ccf_data_list[[paste(col_names[i], col_names[j], sep = "_vs_")]] <- ccf_df
+  }
+}
+
+# Combine all the CCF data into one data frame
+ccf_combined <- do.call(rbind, ccf_data_list)
+
+# Plot the CCF data using ggplot2
+plot_list <- lapply(unique(ccf_combined$col1), function(col1_name) {
+    ggplot(subset(ccf_combined, col1 == col1_name), aes(x = lag, y = ccf)) +
+      geom_line() +
+      labs(title = paste("CCF between", col1_name, "and others"),
+           x = "Lag", y = "CCF") +
+      theme_minimal() +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels
+  })
+  
+  # Arrange all plots in a single column
+
+for (plot in plot_list){
+  print(plot)
+}
+  #theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels
+```
+
+\newpage
+# Multivariate Time Series Analysis
+
+Now we can start our multivariate analysis by computing a correlation matrix which aims to find correlation trends between all pair of variables in our dataset.
+First we can investigate the correlations using the original variables from our dataset, prior to any deseasonality transformations.
+
+```{r}
+#Selects relevant variables for correlation
+cor_data <- clean_data %>%
+  select(national_demand,
+         wind_generation,
+         solar_generation, 
+         #min_temp,
+         max_temp,
+         #rain_mm,
+         wind_speed
+         #average_price_daily
+         )
+
+cor_matrix <- cor(cor_data, use = "complete.obs")
+print(cor_matrix)
+```
+
+\newpage
+The correlation Plot associated to this Matrix has been printed below.
+
+```{r fig.width=6, fig.height=6}
+corrplot(
+  cor_matrix,
+  method = "color",
+  type = "upper",
+  tl.col = "black",    
+  tl.srt = 45,         
+  addCoef.col = "black",  
+  number.cex = 0.8,       
+  number.digits = 2       
+)
+```
+
+We can see above that the main pair of variables with strong correlations are the following:
+
+Strong Positive Correlations:
+min_temp v max_temp (Correlation: 0.899145830)
+wind_speed v wind_generation (Correlation: 0.73804474)
+max_temp v solar_generation (Correlation: 0.594631194)
+
+Strong Negative Correlations:
+solar_generation v national_demand (Correlation: -0.6792199)
+min_temp v national_demand (Correlation: -0.69464097)
+max_temp v national_demand (Correlation: -0.757070658)
+
+\newpage
+# Multivariate Time Series Analysis (Post De-seasonalisation)
+
+Now we will perform the same analysis but de-seasonalising all variables which have been identified as having strong periodicities from the univariate time series analyses.
+
+```{r}
+#Selects relevant variables for correlation
+cor_data <- clean_data_2 %>%
+  select('national_demand*',
+         'wind_generation',
+         'solar_generation*', 
+         #min_temp_stationary,
+         'max_temp*',
+         #rain_mm,
+         'wind_speed'
+         #average_price_daily
+         )
+
+cor_matrix <- cor(cor_data, use = "complete.obs")
+print(cor_matrix)
+```
+
+```{r fig.width=6, fig.height=6}
+corrplot(
+  cor_matrix,
+  method = "color",
+  type = "upper",
+  tl.col = "black",    
+  tl.srt = 45,         
+  addCoef.col = "black",  
+  number.cex = 0.8,       
+  number.digits = 2       
+)
+mtext("* indicates transformed variables", side = 1, line =1, cex = 0.8)
+```
+
+
+We can now see above that the variables previously identified as having strong correlations now have far weaker correlations after taking out seasonal periodicities. The new correlations found are below:
+
+Previous Strong Positive Correlations:
+min_temp_stationary v max_temp_stationary (Correlation: 0.415979101)
+wind_speed v wind_generation (Correlation: 0.738044738)
+max_temp_stationary v solar_generation_stationary (Correlation: 0.150273554)
+
+Previous Strong Negative Correlations:
+solar_generation_stationary v national_demand_stationary (Correlation: -0.12824359)
+min_temp_stationary v national_demand_stationary (Correlation: -0.088702933)
+max_temp_stationary v national_demand_stationary (Correlation: -0.144162728)
+
+This sudden drop in strong correlations highlights that seasonality was a significant driver of high correlations, and is possibly a "confounder" variable, since they shared similar periodicities. Our new correlation scores reflect the stationary relationships between these variables, allowing us to explore the data without arriving at misleading conclusions due to the influence of seasonality.
+
+\newpage
+# Linear Regression Model and Scatterplots for Variables of interest
+
+```{r fig.width=12, fig.height=4}
+
+# First plot
+lm_model_1 <- lm(max_temp ~ min_temp, data = clean_data)
+r_squared_1 <- summary(lm_model_1)$r.squared  
+p_value_1 <- summary(lm_model_1)$coefficients[2,4]
+
+title_text_1 <- sprintf(
+  "Min Temp vs. Max Temp\nR² = %.3f, p = %.3f",
+  r_squared_1, p_value_1
+)
+
+p1 <- ggplot(clean_data, aes(x = min_temp, y = max_temp)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = title_text_1,
+    x = "Minimum Temperature",
+    y = "Maximum Temperature"
+  ) +
+  theme_minimal()
+
+# Second plot
+lm_model_2 <- lm(max_temp_stationary ~ min_temp_stationary, data = clean_data)
+r_squared_2 <- summary(lm_model_2)$r.squared  
+p_value_2 <- summary(lm_model_2)$coefficients[2,4]
+
+title_text_2 <- sprintf(
+  "Min Temp (Stationary) vs. Max Temp (Stationary)\nR² = %.3f, p = %.3f",
+  r_squared_2, p_value_2
+)
+
+p2 <- ggplot(clean_data, aes(x = min_temp_stationary, y = max_temp_stationary)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = title_text_2,
+    x = "Min Temp (Stationary)",
+    y = "Max Temp (Stationary)"
+  ) +
+  theme_minimal()
+
+grid.arrange(p1, p2, ncol = 2)
+```
+\newpage
+```{r fig.width=12, fig.height=4}
+
+# First plot
+lm_model_1 <- lm(solar_generation ~ max_temp , data = clean_data)
+r_squared_1 <- summary(lm_model_1)$r.squared  
+p_value_1 <- summary(lm_model_1)$coefficients[2,4]
+
+title_text_1 <- sprintf(
+  "Max Temp vs. Sol Generation\nR² = %.3f, p = %.3f",
+  r_squared_1, p_value_1
+)
+
+p1 <- ggplot(clean_data, aes(x = max_temp, y = solar_generation)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = title_text_1,
+    x = "Max Temp",
+    y = "Sol Generation"
+  ) +
+  theme_minimal()
+
+# Second plot
+lm_model_2 <- lm(solar_generation_stationary ~ max_temp_stationary, 
+                 data = clean_data)
+r_squared_2 <- summary(lm_model_2)$r.squared  
+p_value_2 <- summary(lm_model_2)$coefficients[2,4]
+
+title_text_2 <- sprintf(
+  "Max Temp (Stationary) vs. Sol Generation (Stationary)\nR² = %.3f, p = %.3f",
+  r_squared_2, p_value_2
+)
+
+p2 <- ggplot(clean_data, aes(x = max_temp_stationary, 
+                             y = solar_generation_stationary)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = title_text_2,
+    x = "Max Temp (Stationary)",
+    y = "Sol Generation (Stationary)"
+  ) +
+  theme_minimal()
+
+grid.arrange(p1, p2, ncol = 2)
+```
+
+\newpage
+```{r fig.width=12, fig.height=3}
+
+# First plot
+lm_model_1 <- lm(national_demand ~ wind_generation, data = clean_data)
+r_squared_1 <- summary(lm_model_1)$r.squared  
+p_value_1 <- summary(lm_model_1)$coefficients[2,4]
+
+title_text_1 <- sprintf(
+  "Wind Generation vs. National Demand\nR² = %.3f, p = %.3f",
+  r_squared_1, p_value_1
+)
+
+p1 <- ggplot(clean_data, aes(x = wind_generation, y = national_demand)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = title_text_1,
+    x = "Wind Generation",
+    y = "National Demand"
+  ) +
+  theme_minimal()
+
+# Second plot
+lm_model_2 <- lm(national_demand_stationary ~ wind_generation, 
+                 data = clean_data)
+r_squared_2 <- summary(lm_model_2)$r.squared  
+p_value_2 <- summary(lm_model_2)$coefficients[2,4]
+
+title_text_2 <- sprintf(
+  "Wind Generation vs. National Demand (Stationary)\nR² = %.3f, p = %.3f",
+  r_squared_2, p_value_2
+)
+
+p2 <- ggplot(clean_data, aes(x = wind_generation, 
+                             y = national_demand_stationary)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = title_text_2,
+    x = "Wind Generation",
+    y = "National Demand (Stationary)"
+  ) +
+  theme_minimal()
+
+grid.arrange(p1, p2, ncol = 2)
+```
+
+\newpage
+```{r fig.width=12, fig.height=3}
+
+# First plot
+lm_model_1 <- lm(national_demand ~ solar_generation, data = clean_data)
+r_squared_1 <- summary(lm_model_1)$r.squared  
+p_value_1 <- summary(lm_model_1)$coefficients[2,4]
+
+title_text_1 <- sprintf(
+  "Sol Generation vs. National Demand\nR² = %.3f, p = %.3f",
+  r_squared_1, p_value_1
+)
+
+p1 <- ggplot(clean_data, aes(x = solar_generation, y = national_demand)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = title_text_1,
+    x = "Sol Generation",
+    y = "National Demand"
+  ) +
+  theme_minimal()
+
+# Second plot
+lm_model_2 <- lm(national_demand_stationary ~ solar_generation_stationary, 
+                 data = clean_data)
+r_squared_2 <- summary(lm_model_2)$r.squared  
+p_value_2 <- summary(lm_model_2)$coefficients[2,4]
+
+title_text_2 <- sprintf(
+  "Sol Generation (Stationary) vs. National Demand (Stationary)\nR² = %.3f, p = %.3f",
+  r_squared_2, p_value_2
+)
+
+p2 <- ggplot(clean_data, aes(x = solar_generation_stationary, 
+                             y = national_demand_stationary)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = title_text_2,
+    x = "Sol Generation (Stationary)",
+    y = "National Demand (Stationary)"
+  ) +
+  theme_minimal()
+
+grid.arrange(p1, p2, ncol = 2)
+```
+
+\newpage
+```{r fig.width=12, fig.height=4}
+
+# First plot
+lm_model_1 <- lm(national_demand ~ min_temp, data = clean_data)
+r_squared_1 <- summary(lm_model_1)$r.squared  
+p_value_1 <- summary(lm_model_1)$coefficients[2,4]
+
+title_text_1 <- sprintf(
+  "Min Temp vs. National Demand\nR² = %.3f, p = %.3f",
+  r_squared_1, p_value_1
+)
+
+p1 <- ggplot(clean_data, aes(x = min_temp, y = national_demand)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = title_text_1,
+    x = "Min Temp",
+    y = "National Demand"
+  ) +
+  theme_minimal()
+
+# Second plot
+lm_model_2 <- lm(national_demand_stationary ~ min_temp_stationary, 
+                 data = clean_data)
+r_squared_2 <- summary(lm_model_2)$r.squared  
+p_value_2 <- summary(lm_model_2)$coefficients[2,4]
+
+title_text_2 <- sprintf(
+  "Min Temp (Stationary) vs. National Demand (Stationary)\nR² = %.3f, p = %.3f",
+  r_squared_2, p_value_2
+)
+
+p2 <- ggplot(clean_data, aes(x = min_temp_stationary, 
+                             y = national_demand_stationary)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = title_text_2,
+    x = "Min Temp (Stationary)",
+    y = "National Demand (Stationary)"
+  ) +
+  theme_minimal()
+
+grid.arrange(p1, p2, ncol = 2)
+```
+\newpage
+```{r fig.width=12, fig.height=3}
+
+# First plot
+lm_model_1 <- lm(national_demand ~ max_temp, data = clean_data)
+r_squared_1 <- summary(lm_model_1)$r.squared  
+p_value_1 <- summary(lm_model_1)$coefficients[2,4]
+
+title_text_1 <- sprintf(
+  "Max Temp vs. National Demand\nR² = %.3f, p = %.3f",
+  r_squared_1, p_value_1
+)
+
+p1 <- ggplot(clean_data, aes(x = max_temp, y = national_demand)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = title_text_1,
+    x = "Max Temp",
+    y = "National Demand"
+  ) +
+  theme_minimal()
+
+# Second plot
+lm_model_2 <- lm(national_demand_stationary ~ max_temp_stationary,
+                 data = clean_data)
+r_squared_2 <- summary(lm_model_2)$r.squared  
+p_value_2 <- summary(lm_model_2)$coefficients[2,4]
+
+title_text_2 <- sprintf(
+  "Max Temp (Stationary) vs. National Demand (Stationary)\nR² = %.3f, p = %.3f",
+  r_squared_2, p_value_2
+)
+
+p2 <- ggplot(clean_data, aes(x = max_temp_stationary, 
+                             y = national_demand_stationary)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  geom_smooth(method = "lm", color = "red", se = TRUE) +
+  labs(
+    title = title_text_2,
+    x = "Max Temp (Stationary)",
+    y = "National Demand (Stationary)"
+  ) +
+  theme_minimal()
+
+grid.arrange(p1, p2, ncol = 2)
+```
+\newpage
+
+# Histogram Plots of National Demand by Weekday and Month
+
+Finally, we have furher highlighted the seasonal trends within National Demand that occurs on an Annual and also Weekly basis by showing the distributions below using histograms based on 4 years worth of data. It is clear to see these two different periodicities do play a factor at influencing national demand, and can therefore play a crucial role at predicting this variable in the future.
+
+```{r fig.width=6, fig.height=4}
+
+clean_data$day_of_week <- factor(
+  weekdays(clean_data$date),
+  levels = c("Monday", 
+             "Tuesday", 
+             "Wednesday",
+             "Thursday", 
+             "Friday", 
+             "Saturday",
+             "Sunday")
+)
+
+ggplot(clean_data, aes(x = day_of_week, y = national_demand, fill = day_of_week)) +
+  geom_boxplot(
+    outlier.colour = "red",  
+    outlier.shape  = 16,   
+    outlier.size   = 2,
+  ) +
+  labs(
+    title = "National Demand by Day of the Week",
+    x = "Day of the Week",
+    y = "National Demand"
+  ) +
+  scale_fill_brewer(palette = "Set3") +
+  theme_bw() +
+  theme(legend.position = "none",
+        panel.border = element_blank())
+
+```
+
+```{r fig.width=6, fig.height=4}
+
+clean_data$month <- month(clean_data$date, label = TRUE, abbr = TRUE)
+
+ggplot(clean_data, aes(x = month, y = national_demand, fill = month)) +
+  geom_boxplot(
+    outlier.colour = "red",  
+    outlier.shape  = 16,   
+    outlier.size   = 2       
+  ) +
+  labs(
+    title = "National Demand by Month",
+    x = "Month",
+    y = "National Demand"
+  ) +
+  scale_fill_brewer(palette = "Set3") +
+  theme_bw() +
+  theme(legend.position = "none",
+        panel.border = element_blank())
+
+
+```
